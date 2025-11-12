@@ -892,6 +892,7 @@ function exportSeatingPDF(classId){
   const c=getClass(classId); const seat=getSeating(classId); const studs=getStudentsByClass(classId);
   const title = `Sitzplan ${c.name} – ${c.subject||""}`; const teacher=c.teacher||"—"; const room=seat.roomName||"—"; const date=new Date().toLocaleDateString("de-DE");
   const disabled=new Set(seat.disabled||[]); const aisles=new Set((seat.aisles||[]).map(n=>parseInt(n,10)));
+
   let gridHtml = `<div class="print-grid" style="display:grid; gap:6px; row-gap:12mm; grid-template-columns: repeat(${seat.cols}, 1fr);">`;
   for (let r=0;r<seat.rows;r++){
     for (let col=0; col<seat.cols; col++){
@@ -901,16 +902,21 @@ function exportSeatingPDF(classId){
     }
   }
   gridHtml += `</div>`;
+
   const html=`
 <!doctype html><html lang="de"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title>
-<style>@page{size:A4;margin:14mm}body{font:12pt system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#111}
-h1{font-size:18pt;margin:0 0 2mm 0}.meta{color:#333;margin-top:1mm}
-.print-cell{border:1px solid #333;border-radius:4px;min-height:28mm;display:flex;align-items:center;justify-content:center;padding:4px;text-align:center;word-break:break-word}
-.print-cell.disabled{background:repeating-linear-gradient(45deg,#00000010,#00000010 6px,transparent 6px,transparent 12px)}</style></head><body>
+<style>
+  @page{size:A4 landscape; margin:14mm}
+  body{font:12pt system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#111}
+  h1{font-size:18pt;margin:0 0 2mm 0}.meta{color:#333;margin-top:1mm}
+  .print-cell{border:1px solid #333;border-radius:4px;min-height:28mm;display:flex;align-items:center;justify-content:center;padding:4px;text-align:center;word-break:break-word}
+  .print-cell.disabled{background:repeating-linear-gradient(45deg,#00000010,#00000010 6px,transparent 6px,transparent 12px)}
+</style></head><body>
 <h1>${escapeHtml(title)}</h1>
 <div class="meta">Klassenlehrkraft: ${escapeHtml(teacher)} · Raum: ${escapeHtml(room)} · Schülerzahl: ${studs.length} · Datum: ${date}</div>
 ${gridHtml}
 <script>window.onload=()=>{window.print(); setTimeout(()=>window.close(), 500);}</script></body></html>`.trim();
+
   const w=window.open("","_blank"); if (!w){ showToast("Pop-up blockiert."); return; }
   w.document.open(); w.document.write(html); w.document.close();
 }
