@@ -4,9 +4,8 @@ const DISPLAY_MINUS = s => s.replaceAll("-", "−");
 const NORM_SYMBOL = s => s.replaceAll("−", "-");
 
 // ===== Krypto/IndexedDB (AES-GCM-Vault) =====
-const DB_NAME = "oralGradesDB_secure_v6";
+const DB_NAME = "oralGradesDB_secure_v7";
 const DB_VERSION = 1;
-// Stores: users(id, username unique, salt, passHash, encDataKey, keyIv), vault(id, userId, kind, iv, data b64)
 
 function toB64(ab){ return btoa(String.fromCharCode(...new Uint8Array(ab))); }
 function fromB64(b64){ const bin=atob(b64); const u8=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) u8[i]=bin.charCodeAt(i); return u8.buffer; }
@@ -304,12 +303,12 @@ function showView(sel){
   tabs.forEach(t=>t.setAttribute("aria-selected", String(t.dataset.view===sel)));
   if (sel==="#view-erfassen"){
     populateClassSelects(); setDefaultDatesForRecord(); initDefaultSortModeForClass(); renderStudentList(); highlightSemesterButtons();
-  } else if (sel==="#view-verwaltung"){
-    renderGlobalYearForm(); renderClassList();
   } else if (sel==="#view-uebersicht"){
     populateClassSelects(); setDefaultDatesForOverview(); renderOverview(); highlightSemesterButtons(true);
   } else if (sel==="#view-sitzplan"){
     populateClassSelects(); classSelectSeating.value=currentClassId||classSelectSeating.value; renderSeatingControlsFromClass(); renderSeating();
+  } else if (sel==="#view-verwaltung"){
+    renderGlobalYearForm(); renderClassList();
   }
   updateAppTitle();
 }
@@ -901,7 +900,7 @@ function exportSeatingPDF(classId){
   @page{size:A4 landscape; margin:14mm}
   body{font:12pt system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#111}
   h1{font-size:18pt;margin:0 0 2mm 0}.meta{color:#333;margin-top:1mm}
-  .print-cell{border:1px solid #333;border-radius:4px;min-height:28mm;display:flex;align-items:center;justify-content:center;padding:4px;text-align:center;word-break:break-word}
+  .print-cell{border:1px solid #333;border-radius:4px;height:28mm;display:flex;align-items:center;justify-content:center;padding:4px;text-align:center;word-break:break-word}
   .print-cell.disabled{background:repeating-linear-gradient(45deg,#00000010,#00000010 6px,transparent 6px,transparent 12px)}
 </style></head><body>
 <h1>${escapeHtml(title)}</h1>
@@ -926,6 +925,7 @@ function initAfterLogin(){
   initDefaultSortModeForClass();
   renderStudentList();
   updateAppTitle();
+  // Service Worker ist bereits in Bootstrap registriert
 }
 
 // Bootstrap
