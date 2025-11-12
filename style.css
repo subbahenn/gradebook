@@ -73,21 +73,21 @@ main{padding:1rem; max-width:1300px; margin:0 auto}
 .quick-semester{display:flex; gap:.5rem; align-items:center}
 .quick-semester .sem-btn{height:40px; padding:.35rem .8rem}
 
-/* Sitzplan-Toolbar: Felder füllen Breite; Buttons darunter in einer Zeile */
+/* Sitzplan-Toolbar: Felder in einer Zeile; Buttons darunter in einer Zeile */
 .toolbar-seating{
   display:flex; flex-direction:column; gap:.75rem; align-items:stretch;
 }
 .seating-fields{
-  display:grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap:1rem;
-  align-items:end;
+  display:flex; gap:1rem; flex-wrap:wrap; align-items:end;
 }
+@media (min-width:1024px){
+  .seating-fields{ flex-wrap:nowrap }
+}
+/* Eingaben im Sitzplan: kompakt, nicht auf 100% Breite erzwingen */
 .toolbar-seating .seating-fields input[type="text"],
 .toolbar-seating .seating-fields input[type="number"],
 .toolbar-seating .seating-fields select{
-  width:100%;
-  min-width:0;
+  width:auto; min-width:0;
 }
 .seating-actions{
   display:flex; gap:.5rem; flex-wrap:nowrap; align-items:center;
@@ -248,7 +248,8 @@ button:disabled{opacity:.6; cursor:not-allowed}
   .print-header{font-size:14px; margin-bottom:10px}
   .print-grid{display:grid; gap:6px; row-gap:12mm}
   .print-cell{
-    border:1px solid #333; border-radius:4px; min-height:28mm; display:flex; align-items:center; justify-content:center;
+    border:1px solid #333; border-radius:4px; height:28mm; /* gleiche Tischgröße */
+    display:flex; align-items:center; justify-content:center;
     font-size:12px; padding:4px; text-align:center; word-break:break-word;
   }
   .print-cell.disabled{background:repeating-linear-gradient(45deg, #00000010, #00000010 6px,transparent 6px,transparent 12px)}
