@@ -14,7 +14,8 @@
   --secondary-bg:#e6fff6; --secondary-border:#bdecdc; --secondary-text:#0a4d3d;
 
   --neutral-bg:#eef1f4; /* helles Grau für Ø≈4 oder keine Einträge */
-  --aisle:24px; /* Breite für freie Gänge (Spalten) und Zeilenabstand */
+  --aisle:32px; /* Vorgabe: Gänge/Zeilenabstand stets 32px */
+  --base-gap:8px; /* Standardabstand zwischen normalen Spalten */
 }
 [data-theme="dark"]{
   --bg:#0f1216;
@@ -83,12 +84,6 @@ main{padding:1rem; max-width:1300px; margin:0 auto}
 @media (min-width:1024px){
   .seating-fields{ flex-wrap:nowrap }
 }
-/* Eingaben im Sitzplan: kompakt, nicht auf 100% Breite erzwingen */
-.toolbar-seating .seating-fields input[type="text"],
-.toolbar-seating .seating-fields input[type="number"],
-.toolbar-seating .seating-fields select{
-  width:auto; min-width:0;
-}
 .seating-actions{
   display:flex; gap:.5rem; flex-wrap:nowrap; align-items:center;
 }
@@ -111,7 +106,7 @@ input:focus, textarea:focus, select:focus{outline:none; border-color:var(--prima
 .card{background:var(--card); border:1px solid var(--border); border-radius:.75rem; padding:1rem}
 .grid{display:grid; gap:1rem}
 
-/* Verwaltung – iPad-optimierte Grids (eine Zeile) */
+/* Verwaltung – iPad-optimierte Grids */
 .grid-year{ grid-template-columns: repeat(3, minmax(180px,1fr)) auto; align-items:end }
 .grid-class{ grid-template-columns: repeat(6, minmax(150px,1fr)); align-items:end }
 @media (max-width:1023px){
@@ -124,7 +119,7 @@ input:focus, textarea:focus, select:focus{outline:none; border-color:var(--prima
 /* Hinweise */
 .hint{color:var(--muted); margin-top:.5rem}
 
-/* Klasse anlegen: Schülerliste neben Buttons (iPad) */
+/* Klasse anlegen: Schülerliste neben Buttons */
 .row-students{display:grid; grid-template-columns: 1fr auto; gap:.1rem 1rem; align-items:start; margin-top:1rem}
 .row-students .studentlist{width:100%}
 .row-students .side-actions{display:grid; gap:.5rem; align-content:start}
@@ -137,12 +132,13 @@ input:focus, textarea:focus, select:focus{outline:none; border-color:var(--prima
 .student-card{
   background:var(--card); border:1px solid var(--border); border-radius:.75rem; padding:1rem;
   display:flex; justify-content:space-between; align-items:center; gap:.5rem;
-  min-height:72px; cursor:pointer; touch-action:manipulation;
+  min-height:78px; cursor:pointer; touch-action:manipulation;
 }
-.student-name{font-weight:700}
-.avg{font-variant-numeric:tabular-nums; color:var(--muted)}
+.student-name{font-weight:800}
+.avg{font-weight:800; font-size:1.05rem}
+.avg-num{color:var(--muted); font-variant-numeric:tabular-nums; font-size:.9rem; margin-left:.35rem}
 
-/* Durchschnitt-Farbcode (für Listenansichten) */
+/* Durchschnitt-Farbcode (alle Ansichten) */
 .grade-a{background:#e8fff4} /* ~1-2 sehr gut */
 .grade-b{background:#f0fff8} /* ~2-3 gut */
 .grade-c{background:#f7fbff} /* ~3-<4 befriedigend */
@@ -160,26 +156,24 @@ input:focus, textarea:focus, select:focus{outline:none; border-color:var(--prima
 .palette .chip.selected{outline:3px solid var(--ring); border-color:var(--primary)}
 .palette .chip.placed{background:var(--secondary-bg); border-color:var(--secondary-border)}
 
-/* Editor-Raster */
+/* Editor-Raster: Grundabstand zwischen Spalten = var(--base-gap);
+   Zeilenabstand immer 32px (var(--aisle)); Gänge addieren "bis 32px total". */
 .grid-seating{
   --cell:64px;
-  display:grid; gap:6px; background:transparent;
-  width:100%; height:calc(100vh - 320px); /* dynamisch skaliert per JS */
+  display:grid; gap:var(--base-gap); background:transparent;
+  width:100%; height:calc(100vh - 320px);
 }
 .grid-seating .cell{
   width:var(--cell); height:var(--cell); display:flex; align-items:center; justify-content:center;
   border:1px dashed var(--border); border-radius:.35rem; background:var(--card); color:var(--text);
   user-select:none; touch-action:manipulation; cursor:pointer; text-align:center; padding:.25rem;
-  box-sizing:border-box;
 }
 .grid-seating .cell.disabled{background:repeating-linear-gradient(45deg, #00000008, #00000008 6px, transparent 6px, transparent 12px); cursor:not-allowed; opacity:.6}
-/* Plätze neutral (keine farbige Hervorhebung) */
-.grid-seating .cell.occupied{border-style:dashed; border-color:var(--border); background:var(--card)}
 
 /* Erfassen – Sitzplananzeige (maximale Flächennutzung) */
 .capture-seating{
   --cell:80px;
-  display:grid; gap:8px; width:100%; height:calc(100vh - 240px);
+  display:grid; gap:var(--base-gap); width:100%; height:calc(100vh - 240px);
 }
 .cap-cell{
   width:var(--cell); height:var(--cell);
@@ -187,12 +181,17 @@ input:focus, textarea:focus, select:focus{outline:none; border-color:var(--prima
   display:flex; align-items:center; justify-content:center; padding:.25rem; box-sizing:border-box;
 }
 .cap-disabled{background:repeating-linear-gradient(45deg, #00000008, #00000008 6px, transparent 6px, transparent 12px)}
-/* Plätze neutral (keine farbige Hervorhebung) */
-.cap-occupied{border-style:dashed; border-color:var(--border); background:var(--card)}
+.cap-occupied{}
 .cap-btn{
   all:unset; display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%; height:100%; cursor:pointer;
-  text-align:center; padding:.25rem; border-radius:.25rem;
+  text-align:center; padding:.3rem; border-radius:.35rem; font-weight:700;
 }
+.cap-btn .avg{font-size:1.05rem}
+.cap-btn .avg-num{color:var(--muted); font-size:.85rem}
+
+/* Übersicht – Hervorhebung */
+.ovl-highlight{background:var(--card); border:1px solid var(--border); border-radius:.75rem; padding:.6rem .8rem; margin-bottom:.5rem; font-weight:800; font-size:1.1rem}
+.ovl-highlight .note{margin-left:.5rem}
 
 /* Tabellen/Listen/Stats */
 .list{display:grid; gap:.75rem}
@@ -206,7 +205,7 @@ input:focus, textarea:focus, select:focus{outline:none; border-color:var(--prima
 [data-theme="dark"] .table td.stu, [data-theme="dark"] .table td.val{background:#ffffff0a}
 .stats{margin:.5rem 0 1rem 0; color:var(--text)}
 
-/* Semester-Buttons: aktive Auswahl hervorheben */
+/* Semester-Buttons aktiv */
 .sem-btn.sem-active{ background:var(--primary); color:#fff; border-color:var(--primary); }
 
 /* Kontext-Popover (Bewertung) */
@@ -242,13 +241,12 @@ button:disabled{opacity:.6; cursor:not-allowed}
 }
 .toast.show{opacity:1; transform:translateX(-50%) translateY(-6px)}
 
-/* Druck/PDF */
+/* Druck/PDF – Sitzplan: gleiche Abstände wie Web (px), gleiche Tischgröße */
 @media print{
   body{background:#fff}
-  .print-header{font-size:14px; margin-bottom:10px}
-  .print-grid{display:grid; gap:6px; row-gap:12mm}
+  .print-grid{display:grid; gap:8px; row-gap:32px}
   .print-cell{
-    border:1px solid #333; border-radius:4px; height:28mm; /* gleiche Tischgröße */
+    border:1px solid #333; border-radius:4px; height:28mm;
     display:flex; align-items:center; justify-content:center;
     font-size:12px; padding:4px; text-align:center; word-break:break-word;
   }
