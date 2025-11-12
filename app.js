@@ -279,10 +279,22 @@ function getSeating(classId){
 }
 async function updateEncrypted(kind, obj){ await saveEncrypted(kind, obj, obj.id); }
 
-// ===== Title handling =====
+// Titel dynamisch je aktiver Ansicht setzen
 function updateAppTitle(){
-  const name = getClassName(currentClassId) || "—";
-  appTitle.textContent = `Mündliche Noten der Klasse ${name}`;
+  const activeId = document.querySelector(".view.active")?.id || "view-erfassen";
+  const nameRecord = getClassName(currentClassId) || "—";
+  const nameOverview = getClassName(classSelectOverview.value) || nameRecord;
+  const nameSeating = getClassName(classSelectSeating.value) || nameRecord;
+
+  if (activeId === "view-verwaltung") {
+    appTitle.textContent = "Verwaltung";
+  } else if (activeId === "view-uebersicht") {
+    appTitle.textContent = `Übersicht der Klasse ${nameOverview}`;
+  } else if (activeId === "view-sitzplan") {
+    appTitle.textContent = `Sitzplan der Klasse ${nameSeating}`;
+  } else {
+    appTitle.textContent = `Mündliche Noten der Klasse ${nameRecord}`;
+  }
 }
 
 // ===== Routing =====
@@ -299,8 +311,20 @@ function showView(sel){
   } else if (sel==="#view-sitzplan"){
     populateClassSelects(); classSelectSeating.value=currentClassId||classSelectSeating.value; renderSeatingControlsFromClass(); renderSeating();
   }
+  updateAppTitle();
 }
 tabs.forEach(btn=> btn.addEventListener("click", ()=> showView(btn.dataset.view)));
+
+// Titel nach Klassenauswahl aktualisieren
+classSelectRecord.addEventListener("change", ()=>{ /* ... */ updateAppTitle(); });
+classSelectOverview.addEventListener("change", ()=>{ /* ... */ updateAppTitle(); });
+
+// Sitzplan: Wechsel der Klasse im Editor
+classSelectSeating.addEventListener("change", ()=>{
+  renderSeatingControlsFromClass();
+  renderSeating();
+  updateAppTitle(); // <— NEU
+});
 
 // ===== Populate selects =====
 function populateClassSelects(){
