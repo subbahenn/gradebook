@@ -77,8 +77,22 @@ main{padding:1rem; max-width:1300px; margin:0 auto}
 .toolbar-seating{
   display:flex; flex-direction:column; gap:.75rem; align-items:stretch;
 }
-.seating-fields{display:flex; gap:1rem; flex-wrap:wrap; align-items:end}
-.seating-actions{display:flex; gap:.5rem; flex-wrap:nowrap; align-items:center}
+.seating-fields{
+  display:grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap:1rem;
+  align-items:end;
+}
+/* Eingaben/Dropdowns im Sitzplan-Bereich auf 100% Breite */
+.toolbar-seating .seating-fields input[type="text"],
+.toolbar-seating .seating-fields input[type="number"],
+.toolbar-seating .seating-fields select{
+  width:100%;
+  min-width:0; /* wichtig, damit Grid-Shrink funktioniert */
+}
+.seating-actions{
+  display:flex; gap:.5rem; flex-wrap:nowrap; align-items:center;
+}
 
 /* Form Felder/Buttons */
 label{display:flex; flex-direction:column; gap:.25rem; font-size:.95rem}
@@ -240,8 +254,3 @@ button:disabled{opacity:.6; cursor:not-allowed}
 }
 
 /* Sitzplan – Feldbreiten gemäß Vorgabe */
-#roomNameInput{ width:6ch; min-width:unset }
-#seatingPreset{ width:12ch; min-width:unset }
-#seatingRows{ width:4ch; min-width:unset }
-#seatingCols{ width:4ch; min-width:unset }
-#seatingAisles{ width:12ch; min-width:unset }
