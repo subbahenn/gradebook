@@ -3,8 +3,28 @@ const SYMBOL_TO_VALUE = { "+++":1, "++":2, "+":3, "o":4, "-":5, "--":6, "−":5,
 const DISPLAY_MINUS = s => s.replaceAll("-", "−");
 const NORM_SYMBOL = s => s.replaceAll("−", "-");
 
+// ===== Anzeige-Stufen für Durchschnitt (Label) =====
+const GRADE_STEPS = [
+  [1.00, "1"],   [1.25, "1−"],  [1.50, "1-2"], [1.75, "2+"],
+  [2.00, "2"],   [2.25, "2−"],  [2.50, "2-3"], [2.75, "3+"],
+  [3.00, "3"],   [3.25, "3−"],  [3.50, "3-4"], [3.75, "4+"],
+  [4.00, "4"],   [4.25, "4−"],  [4.50, "4-5"], [4.75, "5+"],
+  [5.00, "5"],   [5.25, "5−"],  [5.50, "5-6"], [5.75, "6+"],
+  [6.00, "6"]
+];
+function nearestGradeLabel(avg){
+  if (avg==null) return "—";
+  let best = GRADE_STEPS[0];
+  let bestDist = Math.abs(avg - best[0]);
+  for (const step of GRADE_STEPS){
+    const d = Math.abs(avg - step[0]);
+    if (d < bestDist || (d===bestDist && step[0] < best[0])){ best = step; bestDist = d; }
+  }
+  return best[1];
+}
+
 // ===== Krypto/IndexedDB (AES-GCM-Vault) =====
-const DB_NAME = "oralGradesDB_secure_v7";
+const DB_NAME = "oralGradesDB_secure_v8";
 const DB_VERSION = 1;
 
 function toB64(ab){ return btoa(String.fromCharCode(...new Uint8Array(ab))); }
@@ -129,6 +149,7 @@ const btnH1Overview = document.getElementById("btnH1Overview");
 const btnH2Overview = document.getElementById("btnH2Overview");
 const overviewTableBody = document.getElementById("overviewTableBody");
 const overviewStats = document.getElementById("overviewStats");
+const overviewHighlight = document.getElementById("overviewHighlight");
 
 const classSelectSeating = document.getElementById("classSelectSeating");
 const roomNameInput = document.getElementById("roomNameInput");
@@ -147,7 +168,7 @@ const popoverStudent = document.getElementById("popoverStudent");
 const popoverCancel = document.getElementById("popoverCancel");
 const toastEl = document.getElementById("toast");
 
-// In-Memory, entschlüsselt
+// In-Memory
 let db = null, dataKey = null, currentUser = null;
 let state = { settings:null, classes:[], students:[], entries:[] };
 let currentClassId = null;
@@ -162,13 +183,13 @@ function todayLocal(){ return new Date().toLocaleDateString("de-DE", {weekday:"s
 function dateMinusOne(iso){ const d=new Date(iso); d.setDate(d.getDate()-1); return d.toISOString().slice(0,10); }
 function within(d,f,t){ if(!f && !t) return true; if(f && d<f) return false; if(t && d>t) return false; return true; }
 function mean(a){ if(!a||a.length===0) return null; return a.reduce((s,x)=>s+x,0)/a.length; }
-function fmtMean(x){ if(x==null) return "—"; return (Math.round(x*10)/10).toFixed(1).replace(".",","); }
+function fmt1(x){ return x==null ? "—" : (Math.round(x*10)/10).toFixed(1).replace(".",","); }
 function defaultGlobalYear(){ const now=new Date(); const y = now.getMonth()>=7 ? now.getFullYear() : now.getFullYear()-1; return { yearStart:`${y}-08-01`, h2Start:`${y+1}-02-01`, yearEnd:`${y+1}-07-31` }; }
 function classSemesterRanges(cls){ const gy=state.settings?.globalYear || defaultGlobalYear(); const from1=cls?.yearStart||gy.yearStart; const from2=cls?.h2Start||gy.h2Start; const end=cls?.yearEnd||gy.yearEnd; return { h1:{from:from1,to:dateMinusOne(from2)}, h2:{from:from2,to:end} }; }
 function pickCurrentSemesterRange(cls){ const t=todayISO(); const {h1,h2}=classSemesterRanges(cls); return (t>=h2.from && t<=h2.to)?h2:h1; }
 function escapeHtml(s){ return String(s??"").replace(/[&<>"']/g, m=> ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 
-// Durchschnitt → Farbklasse (für Listen; Sitzplan bleibt neutral)
+// Durchschnitt → Farbklasse (für alle Ansichten; neutral bei Ø≈4 oder keine Daten)
 function gradeClass(avg){
   if (avg==null || Math.abs(avg-4) < 0.051) return "grade-neutral";
   if (avg<=2) return "grade-a";
@@ -368,21 +389,13 @@ function sortStudentsForDisplay(studs, mode){
   if (mode==="firstname") return studs.slice().sort((a,b)=>{ const A=splitName(a.name),B=splitName(b.name); const fn=coll.compare(A.first,B.first); return fn!==0?fn:coll.compare(A.last,B.last); });
   return sortBySeating(currentClassId, studs);
 }
-function initDefaultSortModeForClass(){
-  if (!currentClassId) return;
-  const saved = state.settings.sortModeByClass?.[currentClassId];
-  if (saved){ sortModeSel.value=saved; return; }
-  sortModeSel.value = seatingIsAdjusted(getSeating(currentClassId)) ? "seating" : "lastname";
-  state.settings.sortModeByClass = state.settings.sortModeByClass || {};
-  state.settings.sortModeByClass[currentClassId] = sortModeSel.value;
-  saveEncrypted("settings", state.settings, state.settings.id);
-}
 
 // ===== Erfassen (Listen oder Sitzplan) =====
 function averageForStudentInRange(studentId, from, to){
   const vals = state.entries.filter(e=>e.studentId===studentId && within(e.date,from,to)).map(e=>e.value);
   return mean(vals);
 }
+
 function attachGradePopover(anchorEl, studentId){
   const rect = anchorEl.getBoundingClientRect();
   popoverStudent.textContent = `Bewertung: ${getStudentName(studentId)}`;
@@ -420,32 +433,35 @@ function renderStudentList(){
     studentList.className="cards";
     for (const s of sortStudentsForDisplay(studs, mode)){
       const avg = averageForStudentInRange(s.id, from, to);
+      const label = nearestGradeLabel(avg);
       const card = document.createElement("button");
       card.className = `student-card ${gradeClass(avg)}`; card.type="button";
-      card.innerHTML = `<span class="student-name">${s.name}</span><span class="avg">${fmtMean(avg)}</span>`;
+      card.innerHTML = `<span class="student-name">${escapeHtml(s.name)}</span>
+                        <span><span class="avg">${label}</span><span class="avg-num">(${fmt1(avg)})</span></span>`;
       card.addEventListener("click", ()=> attachGradePopover(card, s.id));
       studentList.appendChild(card);
     }
   } else {
-    // Sitzplan-Erfassung (Sitzplätze neutral, keine Farbflächen pro Durchschnitt)
+    // Sitzplan-Erfassung (farbig nach Durchschnitt; Gänge/Zeilen exakt 32px)
     const seat = getSeating(currentClassId);
     const disabledSet = new Set(seat.disabled||[]);
     const grid = document.createElement("div");
     grid.className = "capture-seating";
     grid.style.gridTemplateColumns = `repeat(${seat.cols}, var(--cell))`;
+    // Zeilenabstand stets 32px
+    grid.style.rowGap = `var(--aisle)`;
 
     const aisles = new Set((seat.aisles||[]).map(n=>parseInt(n,10)).filter(n=>Number.isFinite(n)));
+
     const resize = ()=>{
       const wrap = studentList.getBoundingClientRect();
-      const baseGap = 8;
-      const extraGapX = aisles.size * parseInt(getComputedStyle(document.documentElement).getPropertyValue('--aisle')) || 0;
-      const totalGapX = baseGap * (seat.cols - 1) + extraGapX;
-      const rowGap = aisles.size > 0 ? parseInt(getComputedStyle(document.documentElement).getPropertyValue('--aisle')) : baseGap;
-      grid.style.rowGap = `${rowGap}px`;
-      const totalGapY = (seat.rows - 1) * rowGap;
+      const baseGap = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--base-gap')) || 8;
+      const totalAisleExtra = aisles.size * (parseInt(getComputedStyle(document.documentElement).getPropertyValue('--aisle')) - baseGap);
+      const totalGapX = baseGap * (seat.cols - 1) + totalAisleExtra;
+      const totalGapY = (seat.rows - 1) * (parseInt(getComputedStyle(document.documentElement).getPropertyValue('--aisle')));
       const maxW = Math.max(60, Math.floor((wrap.width - totalGapX) / seat.cols));
       const maxH = Math.max(60, Math.floor((window.innerHeight - 240 - totalGapY) / seat.rows));
-      const cell = Math.max(48, Math.min(maxW, maxH));
+      const cell = Math.max(56, Math.min(maxW, maxH));
       grid.style.setProperty("--cell", `${cell}px`);
     };
 
@@ -455,13 +471,20 @@ function renderStudentList(){
         const cell = document.createElement("div");
         cell.className = "cap-cell";
         if (disabledSet.has(key)) cell.classList.add("cap-disabled");
-        if (aisles.has(c+1)) cell.style.marginRight = "var(--aisle)";
+        // Spaltenabstand: Standard base-gap; nach Gang-Kennzahl zusätzlich (32 - base-gap)
+        if (aisles.has(c+1)) {
+          const baseGap = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--base-gap')) || 8;
+          const extra = Math.max(0, 32 - baseGap);
+          cell.style.marginRight = `${extra}px`;
+        }
         const sid = seat.cells[key];
         if (sid){
-          const avg = averageForStudentInRange(sid, from, to); // nur für Textanzeige
+          const avg = averageForStudentInRange(sid, from, to);
+          const label = nearestGradeLabel(avg);
           const btn = document.createElement("button");
-          btn.className = "cap-btn"; btn.type="button"; // keine gradeClass-Anwendung
-          btn.innerHTML = `<div class="student-name">${getStudentName(sid)}</div><div class="avg">${fmtMean(avg)}</div>`;
+          btn.className = `cap-btn ${gradeClass(avg)}`; btn.type="button";
+          btn.innerHTML = `<div class="student-name">${escapeHtml(getStudentName(sid))}</div>
+                           <div><span class="avg">${label}</span><span class="avg-num">(${fmt1(avg)})</span></div>`;
           btn.addEventListener("click", ()=> attachGradePopover(btn, sid));
           cell.classList.add("cap-occupied");
           cell.appendChild(btn);
@@ -534,7 +557,7 @@ function renderStudentAdminRows(classId){
     </select>`;
     return `
       <div class="student-admin-row" style="display:grid;grid-template-columns:1fr auto auto auto;gap:.5rem;align-items:center;">
-        <input type="text" value="${s.name}" data-student-name data-student-id="${s.id}" data-class-id="${classId}" />
+        <input type="text" value="${escapeHtml(s.name)}" data-student-name data-student-id="${s.id}" data-class-id="${classId}" />
         <div class="inline-actions">
           <button class="secondary small" data-stu-action="up" data-student-id="${s.id}" data-class-id="${classId}" ${idx===0?"disabled":""}>▲</button>
           <button class="secondary small" data-stu-action="down" data-student-id="${s.id}" data-class-id="${classId}" ${idx===studs.length-1?"disabled":""}>▼</button>
@@ -558,7 +581,7 @@ function renderClassList(){
     const wrap=document.createElement("div"); wrap.className="list-item";
     wrap.innerHTML = `
       <div class="list-row">
-        <div><strong>${c.name}</strong> · <span>${c.subject||"—"}</span> · <span class="muted">${c.teacher||"—"}</span> <span class="badge">${cnt} Schüler</span></div>
+        <div><strong>${escapeHtml(c.name)}</strong> · <span>${escapeHtml(c.subject||"—")}</span> · <span class="muted">${escapeHtml(c.teacher||"—")}</span> <span class="badge">${cnt} Schüler</span></div>
         <div class="actions">
           <button class="secondary small" data-action="export-csv" data-id="${c.id}">Export CSV</button>
           <button class="secondary small" data-action="export-pdf" data-id="${c.id}">Export PDF</button>
@@ -568,9 +591,9 @@ function renderClassList(){
       </div>
       <div class="edit-panel hidden" id="edit_${c.id}">
         <div class="grid grid-class">
-          <label>Klassenname <input type="text" value="${c.name}" data-edit="name"></label>
-          <label>Fach <input type="text" value="${c.subject??""}" data-edit="subject"></label>
-          <label>Klassenlehrkraft <input type="text" value="${c.teacher??""}" data-edit="teacher"></label>
+          <label>Klassenname <input type="text" value="${escapeHtml(c.name)}" data-edit="name"></label>
+          <label>Fach <input type="text" value="${escapeHtml(c.subject??"")}" data-edit="subject"></label>
+          <label>Klassenlehrkraft <input type="text" value="${escapeHtml(c.teacher??"")}" data-edit="teacher"></label>
           <label>Schuljahresbeginn <input type="date" value="${c.yearStart}" data-edit="yearStart"></label>
           <label>Beginn 2. Halbjahr <input type="date" value="${c.h2Start}" data-edit="h2Start"></label>
           <label>Schuljahresende <input type="date" value="${c.yearEnd}" data-edit="yearEnd"></label>
@@ -685,26 +708,39 @@ function getEntriesFiltered({classId, studentId=null, from=null, to=null}){
 }
 function renderOverview(){
   overviewTableBody.innerHTML="";
+  overviewHighlight.classList.add("hidden");
   const classId = classSelectOverview.value; if (!classId){ overviewStats.textContent="Keine Klasse ausgewählt."; return; }
   const studId = studentSelectOverview.value || null; const from=overviewFrom.value||null, to=overviewTo.value||null;
   const clsName = getClassName(classId);
+
+  // Tabelle
   for (const e of getEntriesFiltered({classId, studentId:studId, from, to})){
     const tr=document.createElement("tr");
     tr.innerHTML = `
       <td>${e.date}</td>
-      <td>${clsName}</td>
-      <td class="stu">${getStudentName(e.studentId)}</td>
+      <td>${escapeHtml(clsName)}</td>
+      <td class="stu">${escapeHtml(getStudentName(e.studentId))}</td>
       <td>${DISPLAY_MINUS(e.symbol)}</td>
       <td class="val">${e.value}</td>
     `;
     overviewTableBody.appendChild(tr);
   }
+  // Durchschnitte
   const all=getEntriesFiltered({classId, from, to}); const byStu={};
   for (const e of all){ (byStu[e.studentId] ||= []).push(e.value); }
   const lines=[];
-  if (!studId){ for (const s of getStudentsByClass(classId)){ const arr=byStu[s.id]||[]; lines.push(`${s.name}: ${fmtMean(mean(arr))} (${arr.length})`); } }
-  else { const arr=getEntriesFiltered({classId, studentId:studId, from, to}).map(e=>e.value); lines.push(`${getStudentName(studId)}: ${fmtMean(mean(arr))} (${arr.length})`); }
-  overviewStats.textContent = lines.length ? `Durchschnitte im Zeitraum: ${lines.join(" · ")}` : "Keine Einträge im Zeitraum.";
+  if (!studId){
+    for (const s of getStudentsByClass(classId)){
+      const arr=byStu[s.id]||[]; lines.push(`${s.name}: ${fmt1(mean(arr))} (${arr.length})`);
+    }
+    overviewStats.textContent = lines.length ? `Durchschnitte im Zeitraum: ${lines.join(" · ")}` : "Keine Einträge im Zeitraum.";
+  } else {
+    const arr=byStu[studId]||[]; const avg=mean(arr);
+    const label=nearestGradeLabel(avg);
+    overviewHighlight.innerHTML = `<span><strong>${escapeHtml(getStudentName(studId))}</strong></span><span class="note">${label} <span class="avg-num">(${fmt1(avg)})</span></span>`;
+    overviewHighlight.classList.remove("hidden");
+    overviewStats.textContent = `Einträge: ${arr.length}`;
+  }
 }
 function renderOverviewIfActive(){ if (document.querySelector("#view-uebersicht").classList.contains("active")) renderOverview(); }
 
@@ -762,14 +798,15 @@ function parseAislesInput(cols){
 }
 function resizeSeatingEditorGrid(seat){
   const aisles = new Set((seat.aisles||[]).map(n=>parseInt(n,10)));
-  const baseGap = 6;
-  const rowGap = aisles.size>0 ? parseInt(getComputedStyle(document.documentElement).getPropertyValue('--aisle')) : baseGap;
-  seatingGrid.style.rowGap = `${rowGap}px`;
+  // Zeilenabstand immer 32px
+  seatingGrid.style.rowGap = `var(--aisle)`;
   seatingGrid.style.gridTemplateColumns = `repeat(${seat.cols}, var(--cell))`;
+  // verfügbare Fläche nutzen
+  const baseGap = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--base-gap')) || 8;
+  const extraPerAisle = Math.max(0, 32 - baseGap);
   const wrap = seatingGrid.getBoundingClientRect();
-  const extraGapX = aisles.size * parseInt(getComputedStyle(document.documentElement).getPropertyValue('--aisle')) || 0;
-  const totalGapX = baseGap*(seat.cols-1) + extraGapX;
-  const totalGapY = (seat.rows-1) * rowGap;
+  const totalGapX = baseGap*(seat.cols-1) + aisles.size*extraPerAisle;
+  const totalGapY = (seat.rows-1) * parseInt(getComputedStyle(document.documentElement).getPropertyValue('--aisle'));
   const maxW = Math.max(56, Math.floor((wrap.width - totalGapX) / seat.cols));
   const maxH = Math.max(56, Math.floor((seatingGrid.clientHeight - totalGapY) / seat.rows));
   const cell = Math.max(48, Math.min(maxW, maxH));
@@ -784,9 +821,13 @@ function renderSeating(){
     for(let c=0;c<seat.cols;c++){
       const key=`${r}-${c}`; const cell=document.createElement("div"); cell.className="cell";
       if (disabledSet.has(key)) cell.classList.add("disabled");
-      if (aisles.has(c+1)) cell.style.marginRight = "var(--aisle)";
+      if (aisles.has(c+1)) {
+        const baseGap = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--base-gap')) || 8;
+        const extra = Math.max(0, 32 - baseGap);
+        cell.style.marginRight = `${extra}px`;
+      }
       const sid=seat.cells[key];
-      if (sid){ cell.classList.add("occupied"); cell.textContent=getStudentName(sid); }
+      if (sid){ cell.textContent=getStudentName(sid); }
       cell.addEventListener("click", async ()=>{
         if (disabledSet.has(key)) return;
         if (seat.cells[key]){ delete seat.cells[key]; await updateEncrypted("class", getClass(cid)); renderSeating(); renderSeatingPalette(); if (sortModeSel.value==="seating"&&currentClassId===cid) renderStudentList(); return; }
@@ -826,8 +867,9 @@ roomNameInput.addEventListener("change", async ()=>{
 btnExportPDFSeating.addEventListener("click", ()=> exportSeatingPDF(classSelectSeating.value));
 
 // ===== Exporte (CSV UTF-8 + PDF) =====
+function classSemesterFor(classId){ return classSemesterRanges(getClass(classId)); }
 function computeSemesterAverages(classId){
-  const {h1,h2}=classSemesterRanges(getClass(classId)); const studs=getStudentsByClass(classId); const res={};
+  const {h1,h2}=classSemesterFor(classId); const studs=getStudentsByClass(classId); const res={};
   for (const s of studs){
     const e1=getEntriesFiltered({classId, studentId:s.id, from:h1.from, to:h1.to}).map(e=>e.value);
     const e2=getEntriesFiltered({classId, studentId:s.id, from:h2.from, to:h2.to}).map(e=>e.value);
@@ -841,7 +883,7 @@ function exportClassCSVReport(classId){
   const studs=getStudentsByClass(classId); const avgs=computeSemesterAverages(classId);
   const header1=["Klasse",cls.name,"Fach",cls.subject||"","Lehrkraft",cls.teacher||"","Exportdatum",todayISO(),"Schülerzahl",String(studs.length)];
   const sectionA=["Schüler","H1 Durchschnitt","H1 Anzahl","H2 Durchschnitt","H2 Anzahl"];
-  const linesA=studs.map(s=>{ const a=avgs[s.id]; return [s.name, fmtMean(a.h1Avg), a.h1Cnt, fmtMean(a.h2Avg), a.h2Cnt]; });
+  const linesA=studs.map(s=>{ const a=avgs[s.id]; return [s.name, fmt1(a.h1Avg), a.h1Cnt, fmt1(a.h2Avg), a.h2Cnt]; });
   const sectionB=["Schüler","Datum","Symbol","Wert"]; const linesB=[];
   for (const s of studs){
     const entries=state.entries.filter(e=>e.classId===classId && e.studentId===s.id);
@@ -858,7 +900,7 @@ function exportClassCSVReport(classId){
 function exportClassPDFReport(classId){
   const cls=getClass(classId); if (!cls) return;
   const studs=getStudentsByClass(classId); const avgs=computeSemesterAverages(classId); const date=new Date().toLocaleDateString("de-DE");
-  const avgRows = studs.map(s=>{ const a=avgs[s.id]; return `<tr><td>${escapeHtml(s.name)}</td><td>${fmtMean(a.h1Avg)}</td><td>${a.h1Cnt}</td><td>${fmtMean(a.h2Avg)}</td><td>${a.h2Cnt}</td></tr>`; }).join("");
+  const avgRows = studs.map(s=>{ const a=avgs[s.id]; return `<tr><td>${escapeHtml(s.name)}</td><td>${fmt1(a.h1Avg)}</td><td>${a.h1Cnt}</td><td>${fmt1(a.h2Avg)}</td><td>${a.h2Cnt}</td></tr>`; }).join("");
   let entriesHtml=""; for (const s of studs){
     const entries=state.entries.filter(e=>e.classId===classId && e.studentId===s.id);
     if (entries.length===0) continue;
@@ -885,21 +927,26 @@ function exportSeatingPDF(classId){
   const c=getClass(classId); const seat=getSeating(classId); const studs=getStudentsByClass(classId);
   const title = `Sitzplan ${c.name} – ${c.subject||""}`; const teacher=c.teacher||"—"; const room=seat.roomName||"—"; const date=new Date().toLocaleDateString("de-DE");
   const disabled=new Set(seat.disabled||[]); const aisles=new Set((seat.aisles||[]).map(n=>parseInt(n,10)));
-  let gridHtml = `<div class="print-grid" style="display:grid; gap:6px; row-gap:12mm; grid-template-columns: repeat(${seat.cols}, 1fr);">`;
+
+  // Grid HTML mit gleichen Abständen wie Web: gap=8px, row-gap=32px, Aisle-Zwischenraum = 32px total
+  let gridHtml = `<div class="print-grid" style="display:grid; gap:8px; row-gap:32px; grid-template-columns: repeat(${seat.cols}, 1fr);">`;
   for (let r=0;r<seat.rows;r++){
     for (let col=0; col<seat.cols; col++){
       const key=`${r}-${col}`; const n=getStudentName(seat.cells[key])||""; const dis=disabled.has(key)?"disabled":"";
-      const mr = aisles.has(col+1) ? "margin-right:12mm" : "";
+      // base gap 8px → zusätzliche Marge 24px, damit total 32px
+      const mr = aisles.has(col+1) ? "margin-right:24px" : "";
       gridHtml += `<div class="print-cell ${dis}" style="${mr}">${escapeHtml(n)}</div>`;
     }
   }
   gridHtml += `</div>`;
+
   const html=`
 <!doctype html><html lang="de"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title>
 <style>
   @page{size:A4 landscape; margin:14mm}
   body{font:12pt system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#111}
   h1{font-size:18pt;margin:0 0 2mm 0}.meta{color:#333;margin-top:1mm}
+  .print-grid{display:grid}
   .print-cell{border:1px solid #333;border-radius:4px;height:28mm;display:flex;align-items:center;justify-content:center;padding:4px;text-align:center;word-break:break-word}
   .print-cell.disabled{background:repeating-linear-gradient(45deg,#00000010,#00000010 6px,transparent 6px,transparent 12px)}
 </style></head><body>
@@ -925,7 +972,6 @@ function initAfterLogin(){
   initDefaultSortModeForClass();
   renderStudentList();
   updateAppTitle();
-  // Service Worker ist bereits in Bootstrap registriert
 }
 
 // Bootstrap
