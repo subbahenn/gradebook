@@ -1,4 +1,4 @@
-const CACHE_NAME = "oral-grades-secure-cache-v4";
+const CACHE_NAME = "oral-grades-secure-cache-v6";
 const ASSETS = [
   "./",
   "./index.html",
